@@ -37,7 +37,7 @@ st.set_page_config(
     page_title="Content Freshness Dashboard",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 CUSTOM_CSS = """
@@ -265,20 +265,27 @@ h2, h3 {
     background: rgba(172, 117, 255, 0.1) !important;
 }
 
-/* Plotly chart container */
-.js-plotly-plot {
-    background: rgba(255, 255, 255, 0.03) !important;
-    border: 1px solid #654A8C !important;
-    border-radius: 12px !important;
-    padding: 15px !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 20px rgba(124, 77, 255, 0.1);
-    transition: all 0.3s ease;
+/* Plotly chart styling - no scrollbars, no overflow */
+[data-testid="stPlotlyChart"] {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid #654A8C;
+    border-radius: 12px;
+    padding: 15px 15px 25px 15px;
+    overflow: hidden !important;
 }
 
-.js-plotly-plot:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 40px rgba(90, 32, 185, 0.5), 0 0 40px rgba(124, 77, 255, 0.2);
+[data-testid="stPlotlyChart"] > div,
+[data-testid="stPlotlyChart"] iframe {
+    overflow: hidden !important;
+}
+
+[data-testid="stPlotlyChart"]:hover {
     border-color: #AC75FF;
+}
+
+/* Chart column - prevent nested scroll */
+[data-testid="column"] [data-testid="stPlotlyChart"] {
+    overflow: hidden !important;
 }
 
 /* Horizontal rule styling */
@@ -395,10 +402,10 @@ hr {
     font-weight: 600;
 }
 
-/* Footer styling */
+/* Footer styling - minimal bottom space */
 .footer {
-    margin-top: 60px;
-    padding: 20px;
+    margin-top: 8px;
+    padding: 12px;
     border-top: 1px solid #292928;
     text-align: center;
     color: rgba(255, 255, 255, 0.45);
@@ -422,6 +429,38 @@ hr {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #AC75FF;
+}
+
+/* Hide the sidebar completely */
+[data-testid="stSidebar"] {
+    display: none !important;
+}
+
+/* Main content area */
+.main .block-container {
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+    padding-bottom: 1rem !important;
+    max-width: 100% !important;
+}
+
+/* Compact filter dropdowns */
+[data-testid="stSelectbox"] > div > div {
+    background: rgba(33, 33, 33, 0.9) !important;
+    border: 1px solid #654A8C !important;
+    border-radius: 8px !important;
+    color: #F5F5F4 !important;
+    min-height: 42px !important;
+}
+
+[data-testid="stSelectbox"] > div > div:hover {
+    border-color: #AC75FF !important;
+    background: rgba(45, 45, 45, 0.9) !important;
+}
+
+/* Filter row container */
+[data-testid="stHorizontalBlock"] {
+    gap: 12px !important;
 }
 </style>
 """
@@ -475,123 +514,94 @@ def load_taxonomies():
     return get_taxonomies()
 
 
-@st.cache_data(ttl=60)
-def load_entries_for_content_types(content_type_uids: tuple, locale: str = None):
-    """Load entries for specified content types."""
+@st.cache_data(ttl=300)
+def load_all_entries():
+    """Load ALL entries once and cache for 5 minutes. Filtering happens client-side."""
+    content_types = get_content_types()
     all_entries = []
-    for ct_uid in content_type_uids:
-        entries = get_entries(ct_uid, locale=locale)
+    for ct in content_types:
+        entries = get_entries(ct["uid"])
         all_entries.extend(entries)
     return all_entries
 
 
-def render_sidebar():
-    """Render the sidebar with all filters."""
-    st.sidebar.markdown("## 🎛️ Filters")
+def render_inline_filters():
+    """Render compact inline filters below the header."""
     
-    with st.sidebar.expander("📅 Time Period", expanded=True):
+    # Load filter options
+    content_types = load_content_types()
+    environments = load_environments()
+    locales = load_locales()
+    taxonomies = load_taxonomies()
+    
+    ct_options = {ct["title"]: ct["uid"] for ct in content_types}
+    env_options = ["All Environments"] + [env["name"] for env in environments]
+    locale_options_list = ["All Locales"] + [f"{loc['name']} ({loc['code']})" for loc in locales]
+    locale_code_map = {f"{loc['name']} ({loc['code']})": loc["code"] for loc in locales}
+    publish_options = ["All States", "Published", "Draft", "Unpublished"]
+    
+    # Single row with 5 compact filters (with visible labels)
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
         time_options = [
+            "All time",
             "Over 7 days",
             "Over 30 days",
             "Over 90 days",
             "Over 180 days",
-            "Over 1 year",
-            "All time",
-            "Custom"
+            "Over 1 year"
         ]
         selected_period = st.selectbox(
-            "Select time period",
+            "Time Period",
             options=time_options,
-            index=1,
+            index=5,
             key="time_period_select"
         )
-        
-        if selected_period == "Custom":
-            col1, col2 = st.columns(2)
-            with col1:
-                start_date = st.date_input(
-                    "Start date",
-                    value=datetime.now() - timedelta(days=30),
-                    key="custom_start_date"
-                )
-            with col2:
-                end_date = st.date_input(
-                    "End date",
-                    value=datetime.now(),
-                    key="custom_end_date"
-                )
-            date_range = (
-                datetime.combine(start_date, datetime.min.time()),
-                datetime.combine(end_date, datetime.max.time())
-            )
-        else:
-            date_range = get_time_period_dates(selected_period)
+        date_range = get_time_period_dates(selected_period)
     
-    with st.sidebar.expander("📄 Content Type", expanded=True):
-        content_types = load_content_types()
-        ct_options = {ct["title"]: ct["uid"] for ct in content_types}
-        
-        select_all_ct = st.checkbox("Select all content types", value=True, key="select_all_ct")
-        
-        if select_all_ct:
-            selected_ct_names = list(ct_options.keys())
+    with col2:
+        ct_names = ["All Content Types"] + list(ct_options.keys())
+        selected_ct = st.selectbox(
+            "Content Type",
+            options=ct_names,
+            index=0,
+            key="content_type_select"
+        )
+        if selected_ct == "All Content Types":
+            selected_ct_uids = list(ct_options.values())
         else:
-            selected_ct_names = st.multiselect(
-                "Select content types",
-                options=list(ct_options.keys()),
-                default=[],
-                key="content_type_multiselect"
-            )
-        
-        selected_ct_uids = [ct_options[name] for name in selected_ct_names]
+            selected_ct_uids = [ct_options[selected_ct]]
     
-    with st.sidebar.expander("🌍 Environment", expanded=False):
-        environments = load_environments()
-        env_options = [env["name"] for env in environments]
-        selected_environments = st.multiselect(
-            "Select environments",
+    with col3:
+        selected_env = st.selectbox(
+            "Environment",
             options=env_options,
-            default=[],
-            key="environment_multiselect"
+            index=0,
+            key="environment_select"
         )
+        selected_environments = [] if selected_env == "All Environments" else [selected_env]
     
-    with st.sidebar.expander("🌐 Locale", expanded=False):
-        locales = load_locales()
-        locale_options = {f"{loc['name']} ({loc['code']})": loc["code"] for loc in locales}
-        selected_locale_labels = st.multiselect(
-            "Select locales",
-            options=list(locale_options.keys()),
-            default=[],
-            key="locale_multiselect"
+    with col4:
+        selected_locale_label = st.selectbox(
+            "Locale",
+            options=locale_options_list,
+            index=0,
+            key="locale_select"
         )
-        selected_locales = [locale_options[label] for label in selected_locale_labels]
-    
-    with st.sidebar.expander("📤 Publish State", expanded=False):
-        publish_states = st.multiselect(
-            "Select publish states",
-            options=["Published", "Draft", "Unpublished"],
-            default=[],
-            key="publish_state_multiselect"
-        )
-    
-    with st.sidebar.expander("🏷️ Tags", expanded=False):
-        st.info("Tags will be populated after loading entries")
-        tag_filter_enabled = st.checkbox("Enable tag filter", value=False, key="tag_filter_checkbox")
-    
-    with st.sidebar.expander("📂 Taxonomies", expanded=False):
-        taxonomies = load_taxonomies()
-        if taxonomies:
-            tax_options = {tax["name"]: tax["uid"] for tax in taxonomies}
-            selected_tax_names = st.multiselect(
-                "Select taxonomies",
-                options=list(tax_options.keys()),
-                default=[],
-                key="taxonomy_multiselect"
-            )
-            selected_taxonomies = [tax_options[name] for name in selected_tax_names]
+        if selected_locale_label == "All Locales":
+            selected_locales = []
         else:
-            st.info("No taxonomies found in this stack")
-            selected_taxonomies = []
+            selected_locales = [locale_code_map[selected_locale_label]]
+    
+    with col5:
+        selected_publish = st.selectbox(
+            "Publish State",
+            options=publish_options,
+            index=0,
+            key="publish_state_select"
+        )
+        publish_states = [] if selected_publish == "All States" else [selected_publish]
     
     return {
         "date_range": date_range,
@@ -599,8 +609,8 @@ def render_sidebar():
         "environments": selected_environments,
         "locales": selected_locales,
         "publish_states": publish_states,
-        "tag_filter_enabled": tag_filter_enabled,
-        "taxonomies": selected_taxonomies,
+        "tag_filter_enabled": False,
+        "taxonomies": [],
         "content_types": content_types
     }
 
@@ -655,25 +665,20 @@ def render_pie_chart(stats: dict):
         hole=0.5,
         marker_colors=colors,
         textinfo="label+percent",
-        textposition="outside",
-        textfont={"color": "#F5F5F4", "size": 12},
-        hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>"
+        textposition="inside",
+        textfont={"color": "#1A1919", "size": 16, "family": "Inter, sans-serif"},
+        hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>",
+        insidetextorientation="horizontal",
+        domain=dict(x=[0.05, 0.95], y=[0.05, 0.95])
     )])
     
     fig.update_layout(
-        **PLOTLY_LAYOUT,
-        title=dict(text="Content Freshness Distribution", x=0.5, font=dict(color="#D2B7F9", size=16)),
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.15,
-            xanchor="center",
-            x=0.5,
-            font=dict(color="#E1E0E0", size=11)
-        ),
-        height=400,
-        margin=dict(t=60, b=60, l=20, r=20)
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#F5F5F4", family="Inter, sans-serif", size=13),
+        showlegend=False,
+        height=525,
+        margin=dict(t=10, b=10, l=10, r=10)
     )
     
     return fig
@@ -701,20 +706,26 @@ def render_bar_chart(df_by_ct: pd.DataFrame):
     )
     
     fig.update_layout(
-        **PLOTLY_LAYOUT,
-        title=dict(text="Entries by Content Type", x=0.5, font=dict(color="#D2B7F9", size=16)),
-        xaxis_tickangle=-45,
-        height=400,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.35,
-            xanchor="center",
-            x=0.5,
-            font=dict(color="#E1E0E0", size=11)
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#F5F5F4", family="Inter, sans-serif", size=13),
+        xaxis=dict(
+            tickangle=-45,
+            tickfont=dict(size=12, color="#E1E0E0"),
+            title_font=dict(size=14),
+            gridcolor="rgba(101, 74, 140, 0.3)",
+            linecolor="#654A8C"
         ),
-        margin=dict(t=60, b=100, l=40, r=20),
-        bargap=0.2
+        yaxis=dict(
+            tickfont=dict(size=12, color="#E1E0E0"),
+            title_font=dict(size=14),
+            gridcolor="rgba(101, 74, 140, 0.3)",
+            linecolor="#654A8C"
+        ),
+        height=525,
+        showlegend=False,
+        margin=dict(t=10, b=120, l=50, r=10),
+        bargap=0.15
     )
     
     fig.update_traces(
@@ -752,6 +763,7 @@ def render_data_table(df: pd.DataFrame):
 def main():
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     
+    # Header
     st.markdown("""
         <div class="header-banner">
             <h1>
@@ -784,24 +796,26 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
-    filters = render_sidebar()
+    # Inline filters below header
+    filters = render_inline_filters()
     
     if not filters["content_type_uids"]:
-        st.warning("⚠️ Please select at least one content type from the sidebar")
+        st.warning("⚠️ Please select at least one content type")
         return
     
+    # Load ALL entries once (cached for 5 minutes) - no API calls on filter changes
     with st.spinner("Loading entries..."):
-        locale = filters["locales"][0] if filters["locales"] else None
-        entries = load_entries_for_content_types(
-            tuple(filters["content_type_uids"]),
-            locale=locale
-        )
+        all_entries = load_all_entries()
     
-    if not entries:
-        st.warning("⚠️ No entries found for the selected content types")
+    if not all_entries:
+        st.warning("⚠️ No entries found")
         return
     
-    filtered_entries = entries.copy()
+    # All filtering happens client-side (fast, no API calls)
+    filtered_entries = all_entries.copy()
+    
+    # Apply content type filter (client-side)
+    filtered_entries = filter_by_content_types(filtered_entries, filters["content_type_uids"])
     
     # Apply time period filter
     start_date, end_date = filters["date_range"]
@@ -833,19 +847,6 @@ def main():
             filters["publish_states"]
         )
     
-    # Apply tag filter
-    if filters["tag_filter_enabled"]:
-        all_tags = extract_tags_from_entries(entries)
-        if all_tags:
-            selected_tags = st.sidebar.multiselect(
-                "Select tags to filter",
-                options=all_tags,
-                default=[],
-                key="tags_filter_multiselect"
-            )
-            if selected_tags:
-                filtered_entries = filter_by_tags(filtered_entries, selected_tags)
-    
     ct_map = {ct["uid"]: ct["title"] for ct in filters["content_types"]}
     
     stats = calculate_freshness_stats(filtered_entries)
@@ -858,22 +859,37 @@ def main():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### 🥧 Freshness Distribution")
+        st.markdown("<h4 style='text-align: center; color: #D2B7F9; margin-bottom: 0; font-size: 1.15rem;'>Freshness Distribution</h4>", unsafe_allow_html=True)
         if stats["total"] > 0:
             pie_fig = render_pie_chart(stats)
-            st.plotly_chart(pie_fig, use_container_width=True)
+            st.plotly_chart(pie_fig, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
         else:
             st.info("No data to display")
     
     with col2:
-        st.markdown("### 📊 By Content Type")
+        st.markdown("<h4 style='text-align: center; color: #D2B7F9; margin-bottom: 0; font-size: 1.15rem;'>Entries by Content Type</h4>", unsafe_allow_html=True)
         df_by_ct = calculate_freshness_by_content_type(filtered_entries, ct_map)
         if not df_by_ct.empty:
             bar_fig = render_bar_chart(df_by_ct)
             if bar_fig:
-                st.plotly_chart(bar_fig, use_container_width=True)
+                st.plotly_chart(bar_fig, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
         else:
             st.info("No data to display")
+    
+    # Shared legend below both charts
+    st.markdown("""
+        <div style="display: flex; justify-content: center; gap: 28px; margin-top: 24px; margin-bottom: 8px; padding-top: 16px; border-top: 1px solid rgba(101, 74, 140, 0.3);">
+            <span style="display: flex; align-items: center; gap: 8px; color: #E1E0E0; font-size: 1rem;">
+                <span style="width: 14px; height: 14px; border-radius: 2px; background: #B0F7BA; display: inline-block;"></span> Fresh (&lt;30 days)
+            </span>
+            <span style="display: flex; align-items: center; gap: 8px; color: #E1E0E0; font-size: 1rem;">
+                <span style="width: 14px; height: 14px; border-radius: 2px; background: #fbbf24; display: inline-block;"></span> Aging (30-90 days)
+            </span>
+            <span style="display: flex; align-items: center; gap: 8px; color: #E1E0E0; font-size: 1rem;">
+                <span style="width: 14px; height: 14px; border-radius: 2px; background: #f87171; display: inline-block;"></span> Stale (90+ days)
+            </span>
+        </div>
+    """, unsafe_allow_html=True)
     
     st.markdown("---")
     st.markdown("### 📋 Entry Details")
