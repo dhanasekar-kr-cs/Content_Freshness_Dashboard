@@ -427,7 +427,6 @@ PLOTLY_LAYOUT = {
     "plot_bgcolor": "rgba(0,0,0,0)",
     "font": {"color": "#F5F5F4", "family": "Inter, sans-serif"},
     "title_font": {"color": "#D2B7F9", "size": 16},
-    "legend": {"font": {"color": "#E1E0E0"}},
     "xaxis": {
         "gridcolor": "rgba(101, 74, 140, 0.3)",
         "linecolor": "#654A8C",
@@ -481,18 +480,18 @@ def render_sidebar():
     
     with st.sidebar.expander("📅 Time Period", expanded=True):
         time_options = [
-            "Last 7 days",
-            "Last 30 days",
-            "Last 90 days",
-            "Last 180 days",
-            "Last 1 year",
+            "Over 7 days",
+            "Over 30 days",
+            "Over 90 days",
+            "Over 180 days",
+            "Over 1 year",
             "All time",
             "Custom"
         ]
         selected_period = st.selectbox(
             "Select time period",
             options=time_options,
-            index=0
+            index=1
         )
         
         if selected_period == "Custom":

@@ -118,6 +118,11 @@ def get_time_period_dates(period: str) -> tuple[Optional[datetime], datetime]:
     end_date = datetime.now()
     
     period_days = {
+        "Over 7 days": 7,
+        "Over 30 days": 30,
+        "Over 90 days": 90,
+        "Over 180 days": 180,
+        "Over 1 year": 365,
         "Last 7 days": 7,
         "Last 30 days": 30,
         "Last 90 days": 90,
