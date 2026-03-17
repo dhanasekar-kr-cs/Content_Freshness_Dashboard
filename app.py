@@ -25,6 +25,8 @@ from utils import (
     entries_to_dataframe,
     filter_by_date_range,
     filter_by_publish_state,
+    filter_by_environment,
+    filter_by_locale,
     filter_by_tags,
     filter_by_content_types,
     get_time_period_dates,
@@ -108,22 +110,27 @@ h2, h3 {
     font-weight: 600 !important;
 }
 
-/* Metric cards styling */
+/* Metric cards styling - ensure consistent sizing */
+[data-testid="stMetricValue"] {
+    min-height: 40px !important;
+}
+
 [data-testid="stMetric"] {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid #654A8C;
-    border-radius: 10px;
-    padding: 20px;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid #654A8C !important;
+    border-radius: 10px !important;
+    padding: 20px !important;
     backdrop-filter: blur(10px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 30px rgba(124, 77, 255, 0.1);
     transition: all 0.3s ease;
+    min-height: 120px !important;
 }
 
 [data-testid="stMetric"]:hover {
     transform: translateY(-4px);
     box-shadow: 0 8px 40px rgba(90, 32, 185, 0.5), 0 0 40px rgba(124, 77, 255, 0.2);
-    border-color: #AC75FF;
-    background: rgba(255, 255, 255, 0.07);
+    border-color: #AC75FF !important;
+    background: rgba(255, 255, 255, 0.07) !important;
 }
 
 [data-testid="stMetric"] label {
@@ -138,6 +145,10 @@ h2, h3 {
     color: #F5F5F4 !important;
     font-size: 1.75rem !important;
     font-weight: 600 !important;
+}
+
+[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+    min-height: 24px !important;
 }
 
 /* Expander styling */
@@ -491,7 +502,8 @@ def render_sidebar():
         selected_period = st.selectbox(
             "Select time period",
             options=time_options,
-            index=1
+            index=1,
+            key="time_period_select"
         )
         
         if selected_period == "Custom":
@@ -499,12 +511,14 @@ def render_sidebar():
             with col1:
                 start_date = st.date_input(
                     "Start date",
-                    value=datetime.now() - timedelta(days=30)
+                    value=datetime.now() - timedelta(days=30),
+                    key="custom_start_date"
                 )
             with col2:
                 end_date = st.date_input(
                     "End date",
-                    value=datetime.now()
+                    value=datetime.now(),
+                    key="custom_end_date"
                 )
             date_range = (
                 datetime.combine(start_date, datetime.min.time()),
@@ -525,7 +539,8 @@ def render_sidebar():
             selected_ct_names = st.multiselect(
                 "Select content types",
                 options=list(ct_options.keys()),
-                default=[]
+                default=[],
+                key="content_type_multiselect"
             )
         
         selected_ct_uids = [ct_options[name] for name in selected_ct_names]
@@ -536,7 +551,8 @@ def render_sidebar():
         selected_environments = st.multiselect(
             "Select environments",
             options=env_options,
-            default=[]
+            default=[],
+            key="environment_multiselect"
         )
     
     with st.sidebar.expander("🌐 Locale", expanded=False):
@@ -545,7 +561,8 @@ def render_sidebar():
         selected_locale_labels = st.multiselect(
             "Select locales",
             options=list(locale_options.keys()),
-            default=[]
+            default=[],
+            key="locale_multiselect"
         )
         selected_locales = [locale_options[label] for label in selected_locale_labels]
     
@@ -553,12 +570,13 @@ def render_sidebar():
         publish_states = st.multiselect(
             "Select publish states",
             options=["Published", "Draft", "Unpublished"],
-            default=[]
+            default=[],
+            key="publish_state_multiselect"
         )
     
     with st.sidebar.expander("🏷️ Tags", expanded=False):
         st.info("Tags will be populated after loading entries")
-        tag_filter_enabled = st.checkbox("Enable tag filter", value=False)
+        tag_filter_enabled = st.checkbox("Enable tag filter", value=False, key="tag_filter_checkbox")
     
     with st.sidebar.expander("📂 Taxonomies", expanded=False):
         taxonomies = load_taxonomies()
@@ -567,7 +585,8 @@ def render_sidebar():
             selected_tax_names = st.multiselect(
                 "Select taxonomies",
                 options=list(tax_options.keys()),
-                default=[]
+                default=[],
+                key="taxonomy_multiselect"
             )
             selected_taxonomies = [tax_options[name] for name in selected_tax_names]
         else:
@@ -592,27 +611,28 @@ def render_metrics(stats: dict):
     
     with col1:
         st.metric(
-            label="📊 Total Entries",
-            value=f"{stats['total']:,}"
+            label="TOTAL ENTRIES",
+            value=f"{stats['total']:,}",
+            delta="100%"
         )
     
     with col2:
         st.metric(
-            label="✅ Fresh (<30 days)",
+            label="FRESH (<30 DAYS)",
             value=f"{stats['fresh']:,}",
             delta=f"{stats['fresh_pct']}%"
         )
     
     with col3:
         st.metric(
-            label="⚠️ Aging (30-90 days)",
+            label="AGING (30-90 DAYS)",
             value=f"{stats['aging']:,}",
             delta=f"{stats['aging_pct']}%"
         )
     
     with col4:
         st.metric(
-            label="🔴 Stale (90+ days)",
+            label="STALE (90+ DAYS)",
             value=f"{stats['stale']:,}",
             delta=f"{stats['stale_pct']}%"
         )
@@ -734,14 +754,30 @@ def main():
     
     st.markdown("""
         <div class="header-banner">
-            <h1>📊 Content Freshness Dashboard</h1>
+            <h1>
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#AC75FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 10px;">
+                    <line x1="18" y1="20" x2="18" y2="10"></line>
+                    <line x1="12" y1="20" x2="12" y2="4"></line>
+                    <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+                Content Freshness Dashboard
+            </h1>
             <div class="header-meta">
                 <div class="header-meta-item">
-                    <span>🔄</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <polyline points="1 20 1 14 7 14"></polyline>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                    </svg>
                     <span>Real-time content freshness monitoring</span>
                 </div>
                 <div class="header-meta-item">
-                    <span>📈</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                        <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                        <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                        <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                    </svg>
                     <span>Powered by Contentstack</span>
                 </div>
             </div>
@@ -767,6 +803,7 @@ def main():
     
     filtered_entries = entries.copy()
     
+    # Apply time period filter
     start_date, end_date = filters["date_range"]
     if start_date:
         filtered_entries = filter_by_date_range(
@@ -775,19 +812,36 @@ def main():
             end_date=end_date
         )
     
+    # Apply environment filter
+    if filters["environments"]:
+        filtered_entries = filter_by_environment(
+            filtered_entries,
+            filters["environments"]
+        )
+    
+    # Apply locale filter
+    if filters["locales"]:
+        filtered_entries = filter_by_locale(
+            filtered_entries,
+            filters["locales"]
+        )
+    
+    # Apply publish state filter
     if filters["publish_states"]:
         filtered_entries = filter_by_publish_state(
             filtered_entries,
             filters["publish_states"]
         )
     
+    # Apply tag filter
     if filters["tag_filter_enabled"]:
         all_tags = extract_tags_from_entries(entries)
         if all_tags:
             selected_tags = st.sidebar.multiselect(
                 "Select tags to filter",
                 options=all_tags,
-                default=[]
+                default=[],
+                key="tags_filter_multiselect"
             )
             if selected_tags:
                 filtered_entries = filter_by_tags(filtered_entries, selected_tags)

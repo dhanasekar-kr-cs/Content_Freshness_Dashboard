@@ -188,6 +188,37 @@ def filter_by_publish_state(entries: list[dict], states: list[str]) -> list[dict
     return [e for e in entries if get_publish_state(e) in states]
 
 
+def filter_by_environment(entries: list[dict], environments: list[str]) -> list[dict]:
+    """
+    Filter entries that are published to at least one of the specified environments.
+    """
+    if not environments:
+        return entries
+    
+    filtered = []
+    for entry in entries:
+        publish_details = entry.get("publish_details", [])
+        if isinstance(publish_details, dict):
+            publish_details = [publish_details]
+        
+        for pd in publish_details:
+            if pd.get("environment") in environments:
+                filtered.append(entry)
+                break
+    
+    return filtered
+
+
+def filter_by_locale(entries: list[dict], locales: list[str]) -> list[dict]:
+    """
+    Filter entries by locale.
+    """
+    if not locales:
+        return entries
+    
+    return [e for e in entries if e.get("locale") in locales]
+
+
 def filter_by_tags(entries: list[dict], tags: list[str]) -> list[dict]:
     """
     Filter entries that have at least one of the specified tags.
